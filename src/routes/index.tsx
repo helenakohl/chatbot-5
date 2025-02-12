@@ -5,29 +5,19 @@ import { useChat } from "../hooks/use-chat";
 import { ChatMessage } from "../components/ChatMessage";
 import { appConfig } from "../../config.browser";
 import { Welcome } from "../components/Welcome";
+import { EndMessage } from "../components/EndMessage";
+import { EndMessageMoreInfo } from "../components/EndMessageMoreInfo";
 
 export default function Index() {
   const [message, setMessage] = useState<string>("");
-
-  const { currentChat, chatHistory, sendMessage, cancel, state, clear, assitantSpeaking } = useChat();
+  const [showBMWButton, setShowBMWButton] = useState(false);
+  const [showEndMessage, setShowEndMessage] = useState(false);
+  const [showEndMessageMoreInfo, setShowEndMessageMoreInfo] = useState(false);
+  const { currentChat, chatHistory, sendMessage, cancel, state, clear } = useChat();
 
   const currentMessage = useMemo(() => {
     return { content: currentChat ?? "", role: "assistant" } as const;
   }, [currentChat]);
-
-  const [isPlaying, setIsPlaying] = useState(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  const toggleVideo = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +28,11 @@ export default function Index() {
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  useEffect(() => {
+    const assistantMessageCount = chatHistory.filter((msg) => msg.role === "assistant").length;
+    setShowBMWButton(assistantMessageCount >= 5);
+  }, [chatHistory]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const focusInput = () => {
@@ -54,8 +49,6 @@ export default function Index() {
     setMessage("");
   };
 
-  console.log("isSpeaking:", assitantSpeaking);
-
   return (
     <App title="BMW AI chat bot">
       <main className="bg-white md:rounded-lg md:shadow-md p-6 w-full h-full flex flex-col">
@@ -69,7 +62,8 @@ export default function Index() {
                     <button
                       key={phrase}
                       onClick={() => {
-                        sendMessage(phrase, chatHistory).then(() => setMessage(""));
+                        sendMessage(phrase, chatHistory);
+                        setMessage("");
                       }}
                       className="bg-gray-100 border-gray-300 border-2 rounded-lg p-4"
                     >
@@ -97,12 +91,77 @@ export default function Index() {
 
             {currentChat ? <ChatMessage message={currentMessage} /> : null}
           </div>
-
+          {showEndMessage && <EndMessage />}
+          {showEndMessageMoreInfo && <EndMessageMoreInfo />} 
           <div ref={bottomRef} />
         </section>
 
+        {showBMWButton && (
+          <div className="mb-4 flex flex-col items-center space-y-2">
+            <p className="text-center font-semibold">Would you like more information about your BMW after completing the survey?</p>
+            <div className="flex justify-center space-x-4">
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700"
+                onClick={() => {
+                  setShowEndMessageMoreInfo(true);
+                  setShowEndMessage(false);
+                  //log button click
+                  const userId = localStorage.getItem("chatUserId");
+                  if (!userId) {
+                    console.error("User ID not found");
+                    return;
+                  }
+                  fetch("/.netlify/functions/logButton", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ 
+                      userId, 
+                      buttonClicked: "Yes" 
+                    }),
+                  }).catch((error) => console.error("Error logging button click:", error));
+                }}
+              >
+                Yes
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700"
+                onClick={() => {
+                  setShowEndMessage(true);
+                  setShowEndMessageMoreInfo(false);
+                   //log button click
+                   const userId = localStorage.getItem("chatUserId");
+                   if (!userId) {
+                     console.error("User ID not found");
+                     return;
+                   }
+                   fetch("/.netlify/functions/logButton", {
+                     method: "POST",
+                     headers: {
+                       "Content-Type": "application/json",
+                     },
+                     body: JSON.stringify({ 
+                       userId, 
+                       buttonClicked: "No" 
+                     }),
+                   }).catch((error) => console.error("Error logging button click:", error));
+                }}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        )}
         <section className="bg-gray-100 rounded-lg p-2">
-          <form className="flex" onSubmit={handleSendMessage}>
+          <form
+            className="flex"
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendMessage(message, chatHistory);
+              setMessage("");
+            }}
+          >
             {chatHistory.length > 1 ? (
               <button
                 className="bg-gray-100 text-gray-600 py-2 px-4 rounded-l-lg"
@@ -111,6 +170,8 @@ export default function Index() {
                   e.preventDefault();
                   clear();
                   setMessage("");
+                  setShowEndMessage(false); 
+                  setShowEndMessageMoreInfo(false);
                 }}
               >
                 Clear
@@ -126,17 +187,12 @@ export default function Index() {
               disabled={state !== "idle"}
             />
             {state === "idle" ? (
-              <button 
-              className={`py-2 px-4 rounded-r-lg font-bold ${
-                state === "idle" && !assitantSpeaking
-                  ? "bg-blue-700 text-white hover:bg-blue-800"
-                  : "bg-gray-400 text-gray-600"
-              }`}
-              disabled={state !== "idle" || assitantSpeaking}
-              type="submit"
-            >
-              Send
-            </button>
+              <button
+                className="bg-blue-700 text-white font-bold py-2 px-4 rounded-r-lg"
+                type="submit"
+              >
+                Send
+              </button>
             ) : null}
           </form>
         </section>
